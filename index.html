@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FamilyTrust - Mobile Expense Tracker</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Style -->
+    <link rel="stylesheet" href="style.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="mobile-app-wrapper">
+        <!-- Auth Screen -->
+        <div id="auth-screen" class="auth-container">
+            <div class="auth-card glass">
+                <div class="brand">
+                    <i class="fa-solid fa-wallet logo-icon"></i>
+                    <h2>FamilyTrust</h2>
+                    <p>Mobile Expense Tracker</p>
+                </div>
+                
+                <!-- Login Form -->
+                <form id="login-form" class="auth-form active">
+                    <h3>Login</h3>
+                    <div class="form-group">
+                        <label for="login-email">Email</label>
+                        <div class="input-wrapper">
+                            <i class="fa-regular fa-envelope"></i>
+                            <input type="email" id="login-email" required placeholder="Enter email">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Password</label>
+                        <div class="input-wrapper">
+                            <i class="fa-solid fa-lock"></i>
+                            <input type="password" id="login-password" required placeholder="Enter password">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Login <i class="fa-solid fa-arrow-right-to-bracket"></i></button>
+                    <p class="auth-toggle">New family? <a href="#" id="to-register">Create Family Account</a></p>
+                </form>
+
+                <!-- Register Form -->
+                <form id="register-form" class="auth-form">
+                    <h3>Register</h3>
+                    <div class="form-group">
+                        <label for="reg-name">Name</label>
+                        <div class="input-wrapper">
+                            <i class="fa-regular fa-user"></i>
+                            <input type="text" id="reg-name" required placeholder="Enter name">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-email">Email</label>
+                        <div class="input-wrapper">
+                            <i class="fa-regular fa-envelope"></i>
+                            <input type="email" id="reg-email" required placeholder="Enter email">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-password">Password</label>
+                        <div class="input-wrapper">
+                            <i class="fa-solid fa-lock"></i>
+                            <input type="password" id="reg-password" required placeholder="Password">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-role">Role</label>
+                        <div class="input-wrapper">
+                            <i class="fa-solid fa-user-shield"></i>
+                            <select id="reg-role" required>
+                                <option value="owner">Family Owner (Creates Home)</option>
+                                <option value="member">Family Member (Joins Home)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group" id="home-select-group" style="display: none;">
+                        <label for="reg-home-id">Home ID (from Owner)</label>
+                        <div class="input-wrapper">
+                            <i class="fa-solid fa-house-user"></i>
+                            <input type="number" id="reg-home-id" placeholder="Home ID number">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Register <i class="fa-solid fa-user-plus"></i></button>
+                    <p class="auth-toggle">Already registered? <a href="#" id="to-login">Log In</a></p>
+                </form>
+            </div>
+        </div>
+
+        <!-- Dashboard Screen -->
+        <div id="dashboard-screen" class="dashboard-container" style="display: none;">
+            
+            <!-- Mobile Sticky Header -->
+            <header class="app-header glass">
+                <div class="header-user">
+                    <span id="user-display-name">Loading...</span>
+                    <span id="user-display-role" class="badge">role</span>
+                </div>
+                <button class="btn-logout" title="Logout"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
+            </header>
+
+            <!-- Main Content Scroll Area -->
+            <main class="main-content">
+                <div class="home-title-section">
+                    <h1 id="home-display-name">Loading Home...</h1>
+                    <div class="home-meta">
+                        <span>Home ID: <strong id="display-home-id">--</strong></span>
+                        <button id="copy-home-id" title="Copy Home ID"><i class="fa-regular fa-copy"></i></button>
+                    </div>
+                </div>
+
+                <!-- TAB: OVERVIEW -->
+                <section id="tab-overview" class="tab-pane active">
+                    <!-- Net Balance Card -->
+                    <div class="balance-card glass">
+                        <span class="label">Net Family Balance</span>
+                        <div class="amount" id="stat-balance">$0.00</div>
+                        <div class="in-out-summary">
+                            <div class="in">
+                                <i class="fa-solid fa-arrow-trend-up"></i>
+                                <div>
+                                    <span>Credits</span>
+                                    <strong id="stat-credit">$0.00</strong>
+                                </div>
+                            </div>
+                            <div class="line-divider"></div>
+                            <div class="out">
+                                <i class="fa-solid fa-arrow-trend-down"></i>
+                                <div>
+                                    <span>Debits</span>
+                                    <strong id="stat-debit">$0.00</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Add Entry Quick Link -->
+                    <div class="quick-actions">
+                        <button id="btn-add-expense" class="btn btn-accent"><i class="fa-solid fa-plus"></i> Record Transaction</button>
+                    </div>
+
+                    <!-- Visual Chart Card -->
+                    <div class="overview-card glass">
+                        <h3>Analytics</h3>
+                        <div class="chart-container">
+                            <canvas id="analytics-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Recent logs -->
+                    <div class="overview-card glass">
+                        <div class="title-row">
+                            <h3>Recent Logs</h3>
+                            <a href="#" id="view-all-transactions" class="view-all">See All</a>
+                        </div>
+                        <div id="recent-transactions-list" class="recent-list">
+                            <div class="empty-state">No records found.</div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB: TRANSACTIONS (List layout, no tables) -->
+                <section id="tab-expenses" class="tab-pane">
+                    <div class="overview-card glass">
+                        <h3>All Transactions</h3>
+                        
+                        <!-- Simple Search/Filters -->
+                        <div class="filters-row">
+                            <input type="text" id="expense-search" placeholder="Search description...">
+                            <select id="expense-type-filter">
+                                <option value="all">All</option>
+                                <option value="credit">Credits</option>
+                                <option value="debit">Debits</option>
+                            </select>
+                        </div>
+
+                        <!-- Mobile List of Transactions -->
+                        <div id="expenses-mobile-list" class="mobile-transaction-list">
+                            <!-- Dynamic items injected here -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB: FAMILY -->
+                <section id="tab-family" class="tab-pane">
+                    <div class="overview-card glass">
+                        <h3>Invite Member</h3>
+                        <form id="add-member-form" class="mobile-form">
+                            <div class="form-group">
+                                <label for="member-name">Name</label>
+                                <input type="text" id="member-name" required placeholder="Name">
+                            </div>
+                            <div class="form-group">
+                                <label for="member-email">Email</label>
+                                <input type="email" id="member-email" required placeholder="Email">
+                            </div>
+                            <div class="form-group">
+                                <label for="member-password">Password</label>
+                                <input type="password" id="member-password" required placeholder="Password">
+                            </div>
+                            <div class="form-group">
+                                <label for="member-role">Role</label>
+                                <select id="member-role">
+                                    <option value="member">Member</option>
+                                    <option value="owner">Owner (Co-owner)</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-accent btn-block">Add Member</button>
+                        </form>
+                    </div>
+
+                    <div class="overview-card glass">
+                        <h3>Family Members</h3>
+                        <div id="family-members-list" class="members-list">
+                            <!-- Dynamic list -->
+                        </div>
+                    </div>
+                </section>
+            </main>
+
+            <!-- Bottom Navigation Bar -->
+            <nav class="bottom-nav glass">
+                <a href="#" class="nav-item active" data-tab="tab-overview">
+                    <i class="fa-solid fa-chart-pie"></i>
+                    <span>Overview</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="tab-expenses">
+                    <i class="fa-solid fa-list"></i>
+                    <span>History</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="tab-family" id="nav-family-link">
+                    <i class="fa-solid fa-people-roof"></i>
+                    <span>Family</span>
+                </a>
+            </nav>
+        </div>
+
+        <!-- Add Expense Modal -->
+        <div id="expense-modal" class="modal-overlay">
+            <div class="modal-card glass">
+                <div class="modal-header">
+                    <h3 id="modal-title">New Entry</h3>
+                    <button class="modal-close" id="btn-close-modal"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <form id="expense-form" class="mobile-form">
+                    <input type="hidden" id="expense-id">
+                    <div class="form-group">
+                        <label for="expense-amount">Amount ($)</label>
+                        <input type="number" id="expense-amount" step="0.01" required min="0.01" placeholder="0.00">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Type</label>
+                        <div class="type-selector">
+                            <label class="type-option debit">
+                                <input type="radio" name="expense-type" value="debit" checked>
+                                <span class="custom-radio"><i class="fa-solid fa-arrow-trend-down"></i> Debit</span>
+                            </label>
+                            <label class="type-option credit">
+                                <input type="radio" name="expense-type" value="credit">
+                                <span class="custom-radio"><i class="fa-solid fa-arrow-trend-up"></i> Credit</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="expense-description">Description</label>
+                        <input type="text" id="expense-description" required placeholder="e.g. Groceries, Electricity">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="expense-date">Date</label>
+                        <input type="date" id="expense-date" required>
+                    </div>
+
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" id="btn-cancel-modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="btn-save-expense">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Notification Toast -->
+        <div id="toast" class="toast">
+            <span id="toast-message">Notification message</span>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script src="app.js"></script>
+</body>
+</html>

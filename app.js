@@ -1,4 +1,4 @@
-const API_BASE = 'http://127.0.0.1:8000/api';
+const API_BASE = 'https://deee.pythonanywhere.com/api';
 
 // State variables
 let token = localStorage.getItem('access_token') || null;

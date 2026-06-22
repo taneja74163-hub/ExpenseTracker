@@ -13,7 +13,7 @@
     <!-- Style -->
     <link rel="stylesheet" href="style.css">
     <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
     <!-- PWA Settings -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#6366F1">
@@ -21,8 +21,17 @@
 </head>
 <body>
     <div class="mobile-app-wrapper">
+        <!-- Splash / Loading Screen -->
+        <div id="splash-screen" class="splash-container">
+            <div class="splash-content">
+                <i class="fa-solid fa-wallet splash-logo"></i>
+                <h2>FamilyTrust</h2>
+                <div class="spinner"></div>
+            </div>
+        </div>
+
         <!-- Auth Screen -->
-        <div id="auth-screen" class="auth-container">
+        <div id="auth-screen" class="auth-container" style="display: none;">
             <div class="auth-card glass">
                 <div class="brand">
                     <i class="fa-solid fa-wallet logo-icon"></i>
@@ -289,6 +298,41 @@
                         <button type="submit" class="btn btn-primary" id="btn-save-expense">Save</button>
                     </div>
                 </form>
+            </div>
+        </div>
+
+        <!-- View Expense Modal (Pop-up) -->
+        <div id="view-expense-modal" class="modal-overlay">
+            <div class="modal-card glass">
+                <div class="modal-header">
+                    <h3>Transaction Details</h3>
+                    <button class="modal-close" id="btn-close-view-modal"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="view-modal-body">
+                    <div class="detail-row">
+                        <span class="detail-label">Amount</span>
+                        <span id="view-expense-amount" class="detail-value"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Type</span>
+                        <span id="view-expense-type" class="detail-value"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Description</span>
+                        <span id="view-expense-description" class="detail-value text-wrap"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Date</span>
+                        <span id="view-expense-date" class="detail-value"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Recorded By</span>
+                        <span id="view-expense-user" class="detail-value"></span>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-primary btn-block" id="btn-close-view-action">Close</button>
+                </div>
             </div>
         </div>
 

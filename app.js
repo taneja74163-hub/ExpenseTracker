@@ -1,4 +1,4 @@
-const API_BASE = 'https://deee.pythonanywhere.com/api';
+const API_BASE = 'http://127.0.0.1:8000/api';
 
 // State variables
 let token = localStorage.getItem('access_token') || null;
@@ -10,6 +10,7 @@ let members = [];
 let chart = null;
 
 // DOM Elements
+const splashScreen = document.getElementById('splash-screen');
 const authScreen = document.getElementById('auth-screen');
 const dashboardScreen = document.getElementById('dashboard-screen');
 const loginForm = document.getElementById('login-form');
@@ -46,9 +47,18 @@ async function initApp() {
         } catch (error) {
             console.error("Token invalid, logging out...", error);
             logout();
+        } finally {
+            hideSplash();
         }
     } else {
         showAuth();
+        hideSplash();
+    }
+}
+
+function hideSplash() {
+    if (splashScreen) {
+        splashScreen.style.display = 'none';
     }
 }
 
@@ -127,6 +137,10 @@ function setupEventListeners() {
 
     // Invite member
     document.getElementById('add-member-form').addEventListener('submit', handleAddMember);
+
+    // View Modal Close
+    document.getElementById('btn-close-view-modal').addEventListener('click', closeViewModal);
+    document.getElementById('btn-close-view-action').addEventListener('click', closeViewModal);
 }
 
 // Switching Tabs Helper
@@ -261,12 +275,20 @@ function logout() {
 
 // Fetch Profile information
 async function fetchUserProfile() {
-    currentUser = await apiRequest('/accounts/users/me/');
+    const userPromise = apiRequest('/accounts/users/me/');
+    const homePromise = apiRequest('/accounts/homes/current/').catch(err => {
+        console.warn("Failed to fetch home or no home associated", err);
+        return null;
+    });
+
+    const [user, home] = await Promise.all([userPromise, homePromise]);
+    currentUser = user;
+    currentHome = home;
+
     document.getElementById('user-display-name').innerText = currentUser.name || currentUser.email;
     document.getElementById('user-display-role').innerText = currentUser.role;
 
-    if (currentUser.home) {
-        currentHome = await apiRequest('/accounts/homes/current/');
+    if (currentUser.home && currentHome) {
         document.getElementById('home-display-name').innerText = currentHome.name;
         document.getElementById('display-home-id').innerText = `#${currentHome.id}`;
         
@@ -280,6 +302,8 @@ async function fetchUserProfile() {
     } else {
         document.getElementById('home-display-name').innerText = 'No Home Associated';
         document.getElementById('display-home-id').innerText = '#--';
+        const navFamilyLink = document.getElementById('nav-family-link');
+        if (navFamilyLink) navFamilyLink.style.display = 'none';
     }
 }
 
@@ -326,6 +350,8 @@ function renderRecentTransactions() {
     recent.forEach(exp => {
         const item = document.createElement('div');
         item.className = 'log-item';
+        item.setAttribute('onclick', `openViewModal(${exp.id})`);
+        item.style.cursor = 'pointer';
         
         const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
         const dateStr = new Date(exp.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -340,7 +366,7 @@ function renderRecentTransactions() {
                 <i class="fa-solid ${typeIcon}"></i>
             </div>
             <div class="log-details">
-                <div class="log-desc">${exp.description}</div>
+                <div class="log-desc" title="${exp.description}">${exp.description}</div>
                 <div class="log-meta">by ${exp.user_name || 'Member'} • ${dateStr}</div>
             </div>
             <div class="log-amount ${typeClass}">${sign}${formatter.format(exp.amount)}</div>
@@ -372,6 +398,8 @@ function renderExpensesTable() {
     filtered.forEach(exp => {
         const item = document.createElement('div');
         item.className = 'transaction-card';
+        item.setAttribute('onclick', `openViewModal(${exp.id})`);
+        item.style.cursor = 'pointer';
         const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
         const dateStr = new Date(exp.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         const isCredit = exp.type === 'credit';
@@ -384,14 +412,14 @@ function renderExpensesTable() {
                 <i class="fa-solid ${iconClass}"></i>
             </div>
             <div class="t-details">
-                <div class="t-desc">${exp.description}</div>
+                <div class="t-desc" title="${exp.description}">${exp.description}</div>
                 <div class="t-meta">by ${exp.user_name || 'Member'} • ${dateStr}</div>
             </div>
             <div class="t-right">
                 <div class="t-amount ${typeClass}">${sign}${formatter.format(exp.amount)}</div>
                 <div class="t-actions">
-                    <button class="edit" onclick="openExpenseModal(${exp.id})"><i class="fa-regular fa-pen-to-square"></i></button>
-                    <button class="delete" onclick="deleteExpense(${exp.id})"><i class="fa-regular fa-trash-can"></i></button>
+                    <button class="edit" onclick="event.stopPropagation(); openExpenseModal(${exp.id})"><i class="fa-regular fa-pen-to-square"></i></button>
+                    <button class="delete" onclick="event.stopPropagation(); deleteExpense(${exp.id})"><i class="fa-regular fa-trash-can"></i></button>
                 </div>
             </div>
         `;
@@ -496,6 +524,31 @@ function closeExpenseModal() {
     document.getElementById('expense-modal').classList.remove('active');
 }
 
+// View-Only Modal controller
+function openViewModal(id) {
+    const exp = expenses.find(e => e.id === id);
+    if (!exp) return;
+
+    const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+    const dateStr = new Date(exp.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+    document.getElementById('view-expense-amount').innerText = formatter.format(exp.amount);
+    
+    const typeEl = document.getElementById('view-expense-type');
+    typeEl.innerText = exp.type === 'credit' ? 'Credit (Income)' : 'Debit (Expense)';
+    typeEl.style.color = exp.type === 'credit' ? 'var(--credit-color)' : 'var(--debit-color)';
+
+    document.getElementById('view-expense-description').innerText = exp.description;
+    document.getElementById('view-expense-date').innerText = dateStr;
+    document.getElementById('view-expense-user').innerText = exp.user_name || 'Member';
+
+    document.getElementById('view-expense-modal').classList.add('active');
+}
+
+function closeViewModal() {
+    document.getElementById('view-expense-modal').classList.remove('active');
+}
+
 // CRUD Operations - Expenses
 async function handleSaveExpense(e) {
     e.preventDefault();
@@ -573,3 +626,4 @@ function showToast(message, isError = false) {
 // Export functions to global window object for onclick events
 window.openExpenseModal = openExpenseModal;
 window.deleteExpense = deleteExpense;
+window.openViewModal = openViewModal;

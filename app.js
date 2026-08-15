@@ -705,6 +705,8 @@ function renderRecentTransactions() {
     });
 }
 
+let currentLedgerExpensesMap = new Map();
+
 // Fetch Filtered Expenses for Ledger
 async function fetchFilteredExpenses() {
     const search = document.getElementById('expense-search').value;
@@ -725,6 +727,10 @@ async function fetchFilteredExpenses() {
     const queryStr = params.length > 0 ? '?' + params.join('&') : '';
     try {
         const filteredList = await apiRequest(`/expenses/${queryStr}`);
+        currentLedgerExpensesMap.clear();
+        if (Array.isArray(filteredList)) {
+            filteredList.forEach(item => currentLedgerExpensesMap.set(item.id, item));
+        }
         renderExpensesLedger(filteredList);
     } catch (error) {
         showToast(error.message, true);
@@ -848,7 +854,7 @@ function openExpenseModal(id = null) {
 
     if (id) {
         title.innerText = 'Edit Transaction';
-        const exp = expenses.find(e => e.id === id);
+        const exp = expenses.find(e => e.id === id) || currentLedgerExpensesMap.get(id);
         if (exp) {
             document.getElementById('expense-id').value = exp.id;
             document.getElementById('expense-amount').value = exp.amount;
@@ -872,8 +878,9 @@ function closeExpenseModal() {
 
 // View-Only Modal controller
 function openViewModal(id) {
-    const exp = expenses.find(e => e.id === id);
+    const exp = expenses.find(e => e.id === id) || currentLedgerExpensesMap.get(id);
     if (!exp) return;
+
 
     const dateStr = new Date(exp.date).toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' });
 

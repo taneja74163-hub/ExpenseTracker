@@ -898,8 +898,9 @@ body {
     display: none;
     justify-content: center;
     align-items: flex-end; /* Opens from bottom like sheet */
-    z-index: 999;
+    z-index: 99999;
 }
+
 
 .modal-overlay.active {
     display: flex;

@@ -774,7 +774,7 @@ function renderExpensesLedger(listData) {
         grouped[dateKey].forEach(exp => {
             const item = document.createElement('div');
             item.className = 'log-item';
-            item.setAttribute('onclick', `openViewModal(${exp.id})`);
+            item.setAttribute('data-id', exp.id);
             item.style.cursor = 'pointer';
             item.style.marginBottom = '8px';
 
@@ -793,8 +793,20 @@ function renderExpensesLedger(listData) {
                 </div>
                 <div class="log-amount ${typeClass}">${sign}${formatINR(exp.amount)}</div>
             `;
+            
+            const handleItemClick = (e) => {
+                e.preventDefault();
+                openViewModal(exp.id);
+            };
+            item.addEventListener('click', handleItemClick);
+            item.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                openViewModal(exp.id);
+            });
+
             listContainer.appendChild(item);
         });
+
     });
 }
 

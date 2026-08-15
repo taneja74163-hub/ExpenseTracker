@@ -1,4 +1,5 @@
-const CACHE_NAME = 'familytrust-v1';
+const CACHE_NAME = 'familytrust-v2';
+
 const ASSETS = [
   './',
   './index.html',

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>FamilyTrust - Mobile Expense Tracker</title>
+    <title>FamilyTrust — Family Expense Tracker</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -36,7 +36,7 @@
                 <div class="brand">
                     <i class="fa-solid fa-wallet logo-icon"></i>
                     <h2>FamilyTrust</h2>
-                    <p>Mobile Expense Tracker</p>
+                    <p>Family Expense Tracker</p>
                 </div>
                 
                 <!-- Login Form -->
@@ -122,25 +122,38 @@
             <!-- Main Content Scroll Area -->
             <main class="main-content">
                 <div class="home-title-section">
-                    <h1 id="home-display-name">Loading Home...</h1>
-                    <div class="home-meta">
-                        <span>Home ID: <strong id="display-home-id">--</strong></span>
-                        <button id="copy-home-id" title="Copy Home ID"><i class="fa-regular fa-copy"></i></button>
+                    <div>
+                        <h1 id="home-display-name">Loading Home...</h1>
+                        <div class="home-meta">
+                            <span>Home ID: <strong id="display-home-id">--</strong></span>
+                            <button id="copy-home-id" title="Copy Home ID"><i class="fa-regular fa-copy"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- Month / Period Selector -->
+                    <div class="period-selector-wrapper">
+                        <select id="overview-period-select" class="period-dropdown">
+                            <option value="this_month">This Month</option>
+                            <option value="last_month">Last Month</option>
+                            <option value="this_week">This Week</option>
+                            <option value="this_year">This Year</option>
+                            <option value="all">All Time</option>
+                        </select>
                     </div>
                 </div>
 
                 <!-- TAB: OVERVIEW -->
                 <section id="tab-overview" class="tab-pane active">
                     <!-- Net Balance Card -->
-                    <div class="balance-card glass">
+                    <div class="balance-card glass" id="balance-card-wrapper">
                         <span class="label">Net Family Balance</span>
-                        <div class="amount" id="stat-balance">$0.00</div>
+                        <div class="amount" id="stat-balance">₹0</div>
                         <div class="in-out-summary">
                             <div class="in">
                                 <i class="fa-solid fa-arrow-trend-up"></i>
                                 <div>
                                     <span>Credits</span>
-                                    <strong id="stat-credit">$0.00</strong>
+                                    <strong id="stat-credit">₹0</strong>
                                 </div>
                             </div>
                             <div class="line-divider"></div>
@@ -148,7 +161,7 @@
                                 <i class="fa-solid fa-arrow-trend-down"></i>
                                 <div>
                                     <span>Debits</span>
-                                    <strong id="stat-debit">$0.00</strong>
+                                    <strong id="stat-debit">₹0</strong>
                                 </div>
                             </div>
                         </div>
@@ -159,11 +172,58 @@
                         <button id="btn-add-expense" class="btn btn-accent"><i class="fa-solid fa-plus"></i> Record Transaction</button>
                     </div>
 
-                    <!-- Visual Chart Card -->
+                    <!-- Period Summary Breakdown -->
+                    <div class="overview-card glass" id="period-spending-card">
+                        <h3 id="period-summary-title">This Month</h3>
+                        <div class="period-stats-grid">
+                            <div class="p-stat">
+                                <span class="p-label">Spent</span>
+                                <span class="p-val debit-val" id="p-stat-spent">₹0</span>
+                            </div>
+                            <div class="p-stat">
+                                <span class="p-label">Received</span>
+                                <span class="p-val credit-val" id="p-stat-received">₹0</span>
+                            </div>
+                            <div class="p-stat">
+                                <span class="p-label">Transactions</span>
+                                <span class="p-val" id="p-stat-count">0</span>
+                            </div>
+                            <div class="p-stat">
+                                <span class="p-label">Avg. Transaction</span>
+                                <span class="p-val" id="p-stat-avg">₹0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Side-by-Side Charts Section (Grid on desktop) -->
+                    <div class="charts-grid">
+                        <div class="overview-card glass">
+                            <h3>Category Spending</h3>
+                            <div class="chart-container">
+                                <canvas id="category-donut-chart"></canvas>
+                            </div>
+                        </div>
+                        <div class="overview-card glass">
+                            <h3>Monthly Trends</h3>
+                            <div class="chart-container">
+                                <canvas id="monthly-bar-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Top Spending Categories -->
                     <div class="overview-card glass">
-                        <h3>Analytics</h3>
-                        <div class="chart-container">
-                            <canvas id="analytics-chart"></canvas>
+                        <h3>Top Spending Categories</h3>
+                        <div id="top-categories-list" class="top-cat-list">
+                            <!-- Dynamic items injected here -->
+                        </div>
+                    </div>
+
+                    <!-- Financial Insights -->
+                    <div class="overview-card glass insights-card">
+                        <h3><i class="fa-solid fa-lightbulb accent-icon"></i> Family Insights</h3>
+                        <div id="insights-list" class="insights-list">
+                            <!-- Dynamic items injected here -->
                         </div>
                     </div>
 
@@ -179,22 +239,47 @@
                     </div>
                 </section>
 
-                <!-- TAB: TRANSACTIONS (List layout, no tables) -->
+                <!-- TAB: TRANSACTIONS / HISTORY -->
                 <section id="tab-expenses" class="tab-pane">
                     <div class="overview-card glass">
-                        <h3>All Transactions</h3>
+                        <h3>Financial Ledger</h3>
                         
-                        <!-- Simple Search/Filters -->
-                        <div class="filters-row">
+                        <!-- Rich Search/Filters -->
+                        <div class="filters-grid">
                             <input type="text" id="expense-search" placeholder="Search description...">
                             <select id="expense-type-filter">
-                                <option value="all">All</option>
-                                <option value="credit">Credits</option>
-                                <option value="debit">Debits</option>
+                                <option value="all">All Types</option>
+                                <option value="debit">Debits Only</option>
+                                <option value="credit">Credits Only</option>
                             </select>
+                            <select id="expense-category-filter">
+                                <option value="all">All Categories</option>
+                                <option value="groceries">Groceries</option>
+                                <option value="food">Food & Dining</option>
+                                <option value="utilities">Utilities</option>
+                                <option value="housing">Rent / Housing</option>
+                                <option value="transport">Transport</option>
+                                <option value="shopping">Shopping</option>
+                                <option value="clothing">Clothing</option>
+                                <option value="healthcare">Healthcare</option>
+                                <option value="education">Education</option>
+                                <option value="personal">Personal Care</option>
+                                <option value="household">Household</option>
+                                <option value="entertainment">Entertainment</option>
+                                <option value="gifts">Gifts</option>
+                                <option value="travel">Travel</option>
+                                <option value="repairs">Repairs & Maintenance</option>
+                                <option value="bills">Bills</option>
+                                <option value="other">Other</option>
+                            </select>
+                            <select id="expense-member-filter">
+                                <option value="all">All Members</option>
+                            </select>
+                            <input type="date" id="expense-start-date" title="Start Date">
+                            <input type="date" id="expense-end-date" title="End Date">
                         </div>
 
-                        <!-- Mobile List of Transactions -->
+                        <!-- Date Grouped List of Transactions -->
                         <div id="expenses-mobile-list" class="mobile-transaction-list">
                             <!-- Dynamic items injected here -->
                         </div>
@@ -230,7 +315,7 @@
                     </div>
 
                     <div class="overview-card glass">
-                        <h3>Family Members</h3>
+                        <h3>Family Members & Spending</h3>
                         <div id="family-members-list" class="members-list">
                             <!-- Dynamic list -->
                         </div>
@@ -255,22 +340,23 @@
             </nav>
         </div>
 
-        <!-- Add Expense Modal -->
+        <!-- Add/Edit Expense Modal -->
         <div id="expense-modal" class="modal-overlay">
             <div class="modal-card glass">
                 <div class="modal-header">
-                    <h3 id="modal-title">New Entry</h3>
+                    <h3 id="modal-title">Record Transaction</h3>
                     <button class="modal-close" id="btn-close-modal"><i class="fa-solid fa-xmark"></i></button>
                 </div>
                 <form id="expense-form" class="mobile-form">
                     <input type="hidden" id="expense-id">
+                    
                     <div class="form-group">
-                        <label for="expense-amount">Amount ($)</label>
+                        <label for="expense-amount">Amount (₹)</label>
                         <input type="number" id="expense-amount" step="0.01" required min="0.01" placeholder="0.00">
                     </div>
                     
                     <div class="form-group">
-                        <label>Type</label>
+                        <label>Transaction Type</label>
                         <div class="type-selector">
                             <label class="type-option debit">
                                 <input type="radio" name="expense-type" value="debit" checked>
@@ -284,8 +370,32 @@
                     </div>
 
                     <div class="form-group">
+                        <label for="expense-category">Category</label>
+                        <select id="expense-category" required>
+                            <option value="" disabled selected>Select Category</option>
+                            <option value="groceries">🛒 Groceries</option>
+                            <option value="food">🍕 Food & Dining</option>
+                            <option value="utilities">⚡ Utilities</option>
+                            <option value="housing">🏠 Rent / Housing</option>
+                            <option value="transport">🚗 Transport</option>
+                            <option value="shopping">🛍️ Shopping</option>
+                            <option value="clothing">👕 Clothing</option>
+                            <option value="healthcare">🩺 Healthcare</option>
+                            <option value="education">📚 Education</option>
+                            <option value="personal">💅 Personal Care</option>
+                            <option value="household">🧹 Household</option>
+                            <option value="entertainment">🎬 Entertainment</option>
+                            <option value="gifts">🎁 Gifts</option>
+                            <option value="travel">✈️ Travel</option>
+                            <option value="repairs">🔧 Repairs & Maintenance</option>
+                            <option value="bills">📄 Bills</option>
+                            <option value="other">📦 Other</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
                         <label for="expense-description">Description</label>
-                        <input type="text" id="expense-description" required placeholder="e.g. Groceries, Electricity">
+                        <input type="text" id="expense-description" required placeholder="What was this transaction for?">
                     </div>
 
                     <div class="form-group">
@@ -295,13 +405,13 @@
 
                     <div class="modal-actions">
                         <button type="button" class="btn btn-secondary" id="btn-cancel-modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary" id="btn-save-expense">Save</button>
+                        <button type="submit" class="btn btn-primary" id="btn-save-expense">Save Transaction</button>
                     </div>
                 </form>
             </div>
         </div>
 
-        <!-- View Expense Modal (Pop-up) -->
+        <!-- View & Action Expense Modal -->
         <div id="view-expense-modal" class="modal-overlay">
             <div class="modal-card glass">
                 <div class="modal-header">
@@ -318,6 +428,10 @@
                         <span id="view-expense-type" class="detail-value"></span>
                     </div>
                     <div class="detail-row">
+                        <span class="detail-label">Category</span>
+                        <span id="view-expense-category" class="detail-value"></span>
+                    </div>
+                    <div class="detail-row">
                         <span class="detail-label">Description</span>
                         <span id="view-expense-description" class="detail-value text-wrap"></span>
                     </div>
@@ -331,7 +445,29 @@
                     </div>
                 </div>
                 <div class="modal-actions">
-                    <button type="button" class="btn btn-primary btn-block" id="btn-close-view-action">Close</button>
+                    <button type="button" class="btn btn-secondary" id="btn-edit-expense-action"><i class="fa-solid fa-pen"></i> Edit</button>
+                    <button type="button" class="btn btn-danger" id="btn-delete-expense-action"><i class="fa-solid fa-trash"></i> Delete</button>
+                    <button type="button" class="btn btn-primary" id="btn-close-view-action">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Confirm Delete Modal -->
+        <div id="delete-confirm-modal" class="modal-overlay">
+            <div class="modal-card glass">
+                <div class="modal-header">
+                    <h3>Delete Transaction?</h3>
+                    <button class="modal-close" id="btn-close-delete-modal"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="view-modal-body">
+                    <p>This will permanently remove this transaction:</p>
+                    <div class="delete-summary-box" id="delete-summary-text">
+                        ₹0 — Category
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" id="btn-cancel-delete">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="btn-confirm-delete">Delete</button>
                 </div>
             </div>
         </div>
@@ -346,3 +482,4 @@
     <script src="app.js"></script>
 </body>
 </html>
+

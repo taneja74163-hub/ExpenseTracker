@@ -1,4 +1,5 @@
 const API_BASE = 'https://deee.pythonanywhere.com/api';
+// const API_BASE = 'http://localhost:8000/api';
 
 // State variables
 let token = localStorage.getItem('access_token') || null;
@@ -7,7 +8,46 @@ let currentUser = null;
 let currentHome = null;
 let expenses = [];
 let members = [];
-let chart = null;
+let categoryChart = null;
+let monthlyChart = null;
+let activePendingDeleteId = null;
+
+// Category icons mapping
+const CATEGORY_ICONS = {
+    groceries: 'fa-basket-shopping',
+    food: 'fa-utensils',
+    utilities: 'fa-bolt',
+    housing: 'fa-house',
+    transport: 'fa-car',
+    shopping: 'fa-bag-shopping',
+    clothing: 'fa-shirt',
+    healthcare: 'fa-heart-pulse',
+    education: 'fa-book',
+    personal: 'fa-wand-magic-sparkles',
+    household: 'fa-broom',
+    entertainment: 'fa-film',
+    gifts: 'fa-gift',
+    travel: 'fa-plane',
+    repairs: 'fa-wrench',
+    bills: 'fa-file-invoice-dollar',
+    other: 'fa-box'
+};
+
+// Reusable Currency Formatting Utility for Indian Rupees (INR)
+function formatINR(amount) {
+    if (amount === undefined || amount === null || isNaN(amount)) return '₹0';
+    const num = Number(amount);
+    const isNegative = num < 0;
+    const absVal = Math.abs(num);
+    
+    // Format Indian Numbering System
+    const formatted = new Intl.NumberFormat('en-IN', {
+        maximumFractionDigits: 2,
+        minimumFractionDigits: 0
+    }).format(absVal);
+
+    return `${isNegative ? '-' : ''}₹${formatted}`;
+}
 
 // DOM Elements
 const splashScreen = document.getElementById('splash-screen');
@@ -104,7 +144,7 @@ function setupEventListeners() {
     registerForm.addEventListener('submit', handleRegister);
     document.querySelectorAll('.btn-logout').forEach(btn => btn.addEventListener('click', logout));
 
-    // Sidebar tab clicks
+    // Tab navigation
     document.querySelectorAll('.nav-item').forEach(item => {
         item.addEventListener('click', (e) => {
             e.preventDefault();
@@ -121,15 +161,25 @@ function setupEventListeners() {
         }
     });
 
+    // Period selector dropdown change
+    document.getElementById('overview-period-select').addEventListener('change', () => {
+        loadDashboardData();
+    });
+
     // Expenses management
     document.getElementById('btn-add-expense').addEventListener('click', () => openExpenseModal());
     document.getElementById('btn-close-modal').addEventListener('click', closeExpenseModal);
     document.getElementById('btn-cancel-modal').addEventListener('click', closeExpenseModal);
     document.getElementById('expense-form').addEventListener('submit', handleSaveExpense);
 
-    // Filters
-    document.getElementById('expense-search').addEventListener('input', renderExpensesTable);
-    document.getElementById('expense-type-filter').addEventListener('change', renderExpensesTable);
+    // Ledger Filters
+    document.getElementById('expense-search').addEventListener('input', fetchFilteredExpenses);
+    document.getElementById('expense-type-filter').addEventListener('change', fetchFilteredExpenses);
+    document.getElementById('expense-category-filter').addEventListener('change', fetchFilteredExpenses);
+    document.getElementById('expense-member-filter').addEventListener('change', fetchFilteredExpenses);
+    document.getElementById('expense-start-date').addEventListener('change', fetchFilteredExpenses);
+    document.getElementById('expense-end-date').addEventListener('change', fetchFilteredExpenses);
+
     document.getElementById('view-all-transactions').addEventListener('click', (e) => {
         e.preventDefault();
         switchTab('tab-expenses');
@@ -138,9 +188,24 @@ function setupEventListeners() {
     // Invite member
     document.getElementById('add-member-form').addEventListener('submit', handleAddMember);
 
-    // View Modal Close
+    // View Modal Actions
     document.getElementById('btn-close-view-modal').addEventListener('click', closeViewModal);
     document.getElementById('btn-close-view-action').addEventListener('click', closeViewModal);
+    document.getElementById('btn-edit-expense-action').addEventListener('click', () => {
+        const expId = parseInt(document.getElementById('btn-edit-expense-action').getAttribute('data-id'));
+        closeViewModal();
+        openExpenseModal(expId);
+    });
+    document.getElementById('btn-delete-expense-action').addEventListener('click', () => {
+        const expId = parseInt(document.getElementById('btn-delete-expense-action').getAttribute('data-id'));
+        closeViewModal();
+        confirmDeleteExpense(expId);
+    });
+
+    // Confirm Delete Modal Actions
+    document.getElementById('btn-close-delete-modal').addEventListener('click', closeDeleteModal);
+    document.getElementById('btn-cancel-delete').addEventListener('click', closeDeleteModal);
+    document.getElementById('btn-confirm-delete').addEventListener('click', executeDeleteExpense);
 }
 
 // Switching Tabs Helper
@@ -174,7 +239,12 @@ async function apiRequest(endpoint, options = {}) {
         options.body = JSON.stringify(options.body);
     }
 
-    let response = await fetch(`${API_BASE}${endpoint}`, options);
+    let response;
+    try {
+        response = await fetch(`${API_BASE}${endpoint}`, options);
+    } catch (networkErr) {
+        throw new Error("Network error. Please check your internet connection.");
+    }
 
     if (response.status === 401 && refreshToken) {
         // Attempt token refresh
@@ -204,7 +274,17 @@ async function apiRequest(endpoint, options = {}) {
 
     if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.detail || errData.error || response.statusText || 'API Error');
+        let message = errData.detail || errData.error || response.statusText || 'API Error';
+        if (typeof errData === 'object' && !errData.detail && !errData.error) {
+            // Handle field validation errors like { amount: ["..."] }
+            const keys = Object.keys(errData);
+            if (keys.length > 0) {
+                const firstKey = keys[0];
+                const val = errData[firstKey];
+                message = Array.isArray(val) ? `${firstKey}: ${val[0]}` : `${firstKey}: ${val}`;
+            }
+        }
+        throw new Error(message);
     }
 
     return response.status === 204 ? null : response.json();
@@ -292,48 +372,296 @@ async function fetchUserProfile() {
         document.getElementById('home-display-name').innerText = currentHome.name;
         document.getElementById('display-home-id').innerText = `#${currentHome.id}`;
         
-        // Only owners can add members
         const navFamilyLink = document.getElementById('nav-family-link');
-        if (currentUser.role === 'owner') {
-            navFamilyLink.style.display = 'flex';
-        } else {
-            navFamilyLink.style.display = 'none';
-        }
+        navFamilyLink.style.display = 'flex';
     } else {
         document.getElementById('home-display-name').innerText = 'No Home Associated';
         document.getElementById('display-home-id').innerText = '#--';
-        const navFamilyLink = document.getElementById('nav-family-link');
-        if (navFamilyLink) navFamilyLink.style.display = 'none';
     }
 }
 
-// Dashboard Data Loading
+// Helper to compute date range from selected period
+function getPeriodDateRange() {
+    const period = document.getElementById('overview-period-select').value;
+    const now = new Date();
+    let start_date = null;
+    let end_date = null;
+
+    if (period === 'this_month') {
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        start_date = start.toISOString().split('T')[0];
+    } else if (period === 'last_month') {
+        const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const end = new Date(now.getFullYear(), now.getMonth(), 0);
+        start_date = start.toISOString().split('T')[0];
+        end_date = end.toISOString().split('T')[0];
+    } else if (period === 'this_week') {
+        const day = now.getDay();
+        const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday start
+        const start = new Date(now.setDate(diff));
+        start_date = start.toISOString().split('T')[0];
+    } else if (period === 'this_year') {
+        const start = new Date(now.getFullYear(), 0, 1);
+        start_date = start.toISOString().split('T')[0];
+    }
+
+    return { start_date, end_date };
+}
+
+// Dashboard Data Loading (Uses Backend Analytics Endpoints)
 async function loadDashboardData() {
+    setLoadingState(true);
     try {
-        const stats = await apiRequest('/expenses/summary/');
-        renderStats(stats);
+        const { start_date, end_date } = getPeriodDateRange();
+        let queryParams = '';
+        const params = [];
+        if (start_date) params.push(`start_date=${start_date}`);
+        if (end_date) params.push(`end_date=${end_date}`);
+        if (params.length > 0) queryParams = '?' + params.join('&');
 
-        expenses = await apiRequest('/expenses/');
+        const [summary, categorySummary, monthlySummary, memberSummary, expenseList] = await Promise.all([
+            apiRequest(`/expenses/summary/${queryParams}`),
+            apiRequest(`/expenses/category-summary/${queryParams}`),
+            apiRequest('/expenses/monthly-summary/'),
+            apiRequest('/expenses/member-summary/'),
+            apiRequest(`/expenses/${queryParams}`)
+        ]);
+
+        expenses = expenseList;
+        renderSummaryCard(summary);
+        renderPeriodBreakdownCard(summary);
+        renderCategoryDonutChart(categorySummary.categories);
+        renderMonthlyBarChart(monthlySummary.months);
+        renderTopCategoriesList(categorySummary.categories);
+        renderInsights(summary, categorySummary.categories);
         renderRecentTransactions();
-        renderExpensesTable();
+        renderExpensesLedger(expenses);
+        
+        // Populate member dropdown for filters and render family tab
+        populateMemberFilter(memberSummary.members);
+        renderFamilyMembers(memberSummary.members);
 
-        if (currentUser.role === 'owner') {
-            members = await apiRequest('/accounts/users/');
-            renderFamilyMembers();
-        }
-
-        updateChart(stats);
     } catch (error) {
         showToast(error.message, true);
+    } finally {
+        setLoadingState(false);
     }
 }
 
-// UI Rendering - Stats
-function renderStats(stats) {
-    const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
-    document.getElementById('stat-balance').innerText = formatter.format(stats.net_balance);
-    document.getElementById('stat-credit').innerText = formatter.format(stats.total_credit);
-    document.getElementById('stat-debit').innerText = formatter.format(stats.total_debit);
+// Skeleton loading toggler
+function setLoadingState(isLoading) {
+    const list = document.getElementById('recent-transactions-list');
+    if (isLoading && list) {
+        list.innerHTML = '<div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div>';
+    }
+}
+
+// Render Summary Balance Card
+function renderSummaryCard(summary) {
+    document.getElementById('stat-balance').innerText = formatINR(summary.net_balance);
+    document.getElementById('stat-credit').innerText = formatINR(summary.total_credit);
+    document.getElementById('stat-debit').innerText = formatINR(summary.total_debit);
+}
+
+// Render Period Summary Breakdown
+function renderPeriodBreakdownCard(summary) {
+    const periodSelect = document.getElementById('overview-period-select');
+    const periodLabel = periodSelect.options[periodSelect.selectedIndex].text;
+    document.getElementById('period-summary-title').innerText = periodLabel;
+
+    document.getElementById('p-stat-spent').innerText = formatINR(summary.total_debit);
+    document.getElementById('p-stat-received').innerText = formatINR(summary.total_credit);
+    document.getElementById('p-stat-count').innerText = summary.transaction_count || 0;
+
+    const avg = summary.transaction_count > 0 ? (summary.total_debit / summary.transaction_count) : 0;
+    document.getElementById('p-stat-avg').innerText = formatINR(avg);
+}
+
+// Render Category Donut Chart
+function renderCategoryDonutChart(categories) {
+    const ctx = document.getElementById('category-donut-chart').getContext('2d');
+    if (categoryChart) categoryChart.destroy();
+
+    if (!categories || categories.length === 0) {
+        categoryChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['No spending data'],
+                datasets: [{
+                    data: [1],
+                    backgroundColor: ['rgba(255,255,255,0.1)']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } }
+            }
+        });
+        return;
+    }
+
+    const labels = categories.map(c => c.label);
+    const data = categories.map(c => c.amount);
+    const colors = [
+        '#6366F1', '#10B981', '#F59E0B', '#EF4444', '#EC4899', 
+        '#8B5CF6', '#14B8A6', '#F97316', '#06B6D4', '#3B82F6'
+    ];
+
+    categoryChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: colors.slice(0, categories.length),
+                borderWidth: 1,
+                borderColor: '#0B0E14'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { color: '#F3F4F6', font: { family: 'Outfit', size: 11 } }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const cat = categories[context.dataIndex];
+                            return ` ${cat.label}: ${formatINR(cat.amount)} (${cat.percentage}%)`;
+                        }
+                    }
+                }
+            },
+            cutout: '65%'
+        }
+    });
+}
+
+// Render Monthly Bar Chart
+function renderMonthlyBarChart(months) {
+    const ctx = document.getElementById('monthly-bar-chart').getContext('2d');
+    if (monthlyChart) monthlyChart.destroy();
+
+    if (!months || months.length === 0) {
+        return;
+    }
+
+    const labels = months.map(m => {
+        if (!m.month) return 'Unknown';
+        const [year, month] = m.month.split('-');
+        const date = new Date(year, month - 1);
+        return date.toLocaleString('en-US', { month: 'short' });
+    });
+    const debits = months.map(m => m.debit);
+    const credits = months.map(m => m.credit);
+
+    monthlyChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Spent (Debits)',
+                    data: debits,
+                    backgroundColor: '#EF4444',
+                    borderRadius: 4
+                },
+                {
+                    label: 'Received (Credits)',
+                    data: credits,
+                    backgroundColor: '#10B981',
+                    borderRadius: 4
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { color: '#F3F4F6', font: { family: 'Outfit', size: 11 } }
+                }
+            },
+            scales: {
+                x: { ticks: { color: '#9CA3AF' }, grid: { display: false } },
+                y: { ticks: { color: '#9CA3AF' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+        }
+    });
+}
+
+// Render Top Spending Categories
+function renderTopCategoriesList(categories) {
+    const container = document.getElementById('top-categories-list');
+    container.innerHTML = '';
+
+    if (!categories || categories.length === 0) {
+        container.innerHTML = '<div class="empty-state">No spending data for this period.</div>';
+        return;
+    }
+
+    const topList = categories.slice(0, 4);
+    topList.forEach(item => {
+        const icon = CATEGORY_ICONS[item.category] || 'fa-box';
+        const row = document.createElement('div');
+        row.className = 'top-cat-item';
+
+        row.innerHTML = `
+            <div class="top-cat-info">
+                <div class="top-cat-left">
+                    <i class="fa-solid ${icon}"></i>
+                    <span>${item.label}</span>
+                </div>
+                <div class="top-cat-right">
+                    <span class="top-cat-amount">${formatINR(item.amount)}</span>
+                    <span class="top-cat-pct">${item.percentage}%</span>
+                </div>
+            </div>
+            <div class="progress-bar-bg">
+                <div class="progress-bar-fill" style="width: ${Math.min(item.percentage, 100)}%;"></div>
+            </div>
+        `;
+        container.appendChild(row);
+    });
+}
+
+// Render Financial Insights based strictly on data
+function renderInsights(summary, categories) {
+    const container = document.getElementById('insights-list');
+    container.innerHTML = '';
+    const insights = [];
+
+    if (categories && categories.length > 0) {
+        const topCat = categories[0];
+        insights.push(`💡 <strong>${topCat.label}</strong> is your largest spending category for this period (${formatINR(topCat.amount)}, ${topCat.percentage}%).`);
+    }
+
+    if (summary.transaction_count > 0) {
+        const avg = summary.total_debit / summary.transaction_count;
+        insights.push(`💡 Your average transaction amount is <strong>${formatINR(avg)}</strong>.`);
+    }
+
+    if (categories && categories.length > 1) {
+        const secondCat = categories[1];
+        insights.push(`💡 <strong>${secondCat.label}</strong> accounts for <strong>${formatINR(secondCat.amount)}</strong> (${secondCat.percentage}%) of expenses.`);
+    }
+
+    if (insights.length === 0) {
+        container.innerHTML = '<div class="empty-state">Record more transactions to unlock family insights!</div>';
+        return;
+    }
+
+    insights.forEach(text => {
+        const item = document.createElement('div');
+        item.className = 'insight-item';
+        item.innerHTML = text;
+        container.appendChild(item);
+    });
 }
 
 // UI Rendering - Recent logs on Overview
@@ -343,7 +671,10 @@ function renderRecentTransactions() {
 
     const recent = expenses.slice(0, 5);
     if (recent.length === 0) {
-        list.innerHTML = '<div class="empty-state">No transactions recorded yet.</div>';
+        list.innerHTML = `<div class="empty-state">
+            <p>No transactions yet</p>
+            <small>Start tracking your family finances by recording your first transaction.</small>
+        </div>`;
         return;
     }
 
@@ -353,11 +684,10 @@ function renderRecentTransactions() {
         item.setAttribute('onclick', `openViewModal(${exp.id})`);
         item.style.cursor = 'pointer';
         
-        const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
-        const dateStr = new Date(exp.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        
+        const dateStr = new Date(exp.date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
         const isCredit = exp.type === 'credit';
-        const typeIcon = isCredit ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down';
+        const catIcon = CATEGORY_ICONS[exp.category] || 'fa-arrow-trend-down';
+        const typeIcon = isCredit ? 'fa-arrow-trend-up' : catIcon;
         const typeClass = isCredit ? 'credit' : 'debit';
         const sign = isCredit ? '+' : '-';
 
@@ -367,132 +697,147 @@ function renderRecentTransactions() {
             </div>
             <div class="log-details">
                 <div class="log-desc" title="${exp.description}">${exp.description}</div>
-                <div class="log-meta">by ${exp.user_name || 'Member'} • ${dateStr}</div>
+                <div class="log-meta">${exp.category_display || 'Category'} • ${exp.user_name || 'Member'} • ${dateStr}</div>
             </div>
-            <div class="log-amount ${typeClass}">${sign}${formatter.format(exp.amount)}</div>
+            <div class="log-amount ${typeClass}">${sign}${formatINR(exp.amount)}</div>
         `;
         list.appendChild(item);
     });
 }
 
-// UI Rendering - Transaction table
-function renderExpensesTable() {
-    const list = document.getElementById('expenses-mobile-list');
-    if (!list) return;
-    list.innerHTML = '';
+// Fetch Filtered Expenses for Ledger
+async function fetchFilteredExpenses() {
+    const search = document.getElementById('expense-search').value;
+    const type = document.getElementById('expense-type-filter').value;
+    const category = document.getElementById('expense-category-filter').value;
+    const user = document.getElementById('expense-member-filter').value;
+    const start_date = document.getElementById('expense-start-date').value;
+    const end_date = document.getElementById('expense-end-date').value;
 
-    const searchQuery = document.getElementById('expense-search').value.toLowerCase();
-    const typeFilter = document.getElementById('expense-type-filter').value;
+    const params = [];
+    if (search) params.push(`search=${encodeURIComponent(search)}`);
+    if (type && type !== 'all') params.push(`type=${type}`);
+    if (category && category !== 'all') params.push(`category=${category}`);
+    if (user && user !== 'all') params.push(`user=${user}`);
+    if (start_date) params.push(`start_date=${start_date}`);
+    if (end_date) params.push(`end_date=${end_date}`);
 
-    const filtered = expenses.filter(exp => {
-        const matchesSearch = exp.description.toLowerCase().includes(searchQuery);
-        const matchesType = typeFilter === 'all' || exp.type === typeFilter;
-        return matchesSearch && matchesType;
-    });
+    const queryStr = params.length > 0 ? '?' + params.join('&') : '';
+    try {
+        const filteredList = await apiRequest(`/expenses/${queryStr}`);
+        renderExpensesLedger(filteredList);
+    } catch (error) {
+        showToast(error.message, true);
+    }
+}
 
-    if (filtered.length === 0) {
-        list.innerHTML = '<div class="empty-state">No transactions found.</div>';
+// Render Date-Grouped Ledger on History Screen
+function renderExpensesLedger(listData) {
+    const listContainer = document.getElementById('expenses-mobile-list');
+    if (!listContainer) return;
+    listContainer.innerHTML = '';
+
+    if (!listData || listData.length === 0) {
+        listContainer.innerHTML = `<div class="empty-state">
+            <p>No transactions found matching filters.</p>
+        </div>`;
         return;
     }
 
-    filtered.forEach(exp => {
-        const item = document.createElement('div');
-        item.className = 'transaction-card';
-        item.setAttribute('onclick', `openViewModal(${exp.id})`);
-        item.style.cursor = 'pointer';
-        const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
-        const dateStr = new Date(exp.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        const isCredit = exp.type === 'credit';
-        const sign = isCredit ? '+' : '-';
-        const iconClass = isCredit ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down';
-        const typeClass = isCredit ? 'credit' : 'debit';
+    // Group expenses by Date
+    const grouped = {};
+    listData.forEach(exp => {
+        const d = exp.date;
+        if (!grouped[d]) grouped[d] = [];
+        grouped[d].push(exp);
+    });
 
-        item.innerHTML = `
-            <div class="t-icon ${typeClass}">
-                <i class="fa-solid ${iconClass}"></i>
-            </div>
-            <div class="t-details">
-                <div class="t-desc" title="${exp.description}">${exp.description}</div>
-                <div class="t-meta">by ${exp.user_name || 'Member'} • ${dateStr}</div>
-            </div>
-            <div class="t-right">
-                <div class="t-amount ${typeClass}">${sign}${formatter.format(exp.amount)}</div>
-                <div class="t-actions">
-                    <button class="edit" onclick="event.stopPropagation(); openExpenseModal(${exp.id})"><i class="fa-regular fa-pen-to-square"></i></button>
-                    <button class="delete" onclick="event.stopPropagation(); deleteExpense(${exp.id})"><i class="fa-regular fa-trash-can"></i></button>
+    const todayStr = new Date().toISOString().split('T')[0];
+    const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+    Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a)).forEach(dateKey => {
+        let labelDate = new Date(dateKey).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' });
+        if (dateKey === todayStr) labelDate = 'TODAY';
+        else if (dateKey === yesterdayStr) labelDate = 'YESTERDAY';
+
+        const header = document.createElement('div');
+        header.className = 'date-group-header';
+        header.innerText = labelDate;
+        listContainer.appendChild(header);
+
+        grouped[dateKey].forEach(exp => {
+            const item = document.createElement('div');
+            item.className = 'log-item';
+            item.setAttribute('onclick', `openViewModal(${exp.id})`);
+            item.style.cursor = 'pointer';
+            item.style.marginBottom = '8px';
+
+            const isCredit = exp.type === 'credit';
+            const icon = isCredit ? 'fa-arrow-trend-up' : (CATEGORY_ICONS[exp.category] || 'fa-tag');
+            const typeClass = isCredit ? 'credit' : 'debit';
+            const sign = isCredit ? '+' : '-';
+
+            item.innerHTML = `
+                <div class="log-icon ${typeClass}">
+                    <i class="fa-solid ${icon}"></i>
                 </div>
-            </div>
-        `;
-        list.appendChild(item);
+                <div class="log-details">
+                    <div class="log-desc" title="${exp.description}">${exp.description}</div>
+                    <div class="log-meta">${exp.category_display || 'Category'} • ${exp.user_name || 'Member'}</div>
+                </div>
+                <div class="log-amount ${typeClass}">${sign}${formatINR(exp.amount)}</div>
+            `;
+            listContainer.appendChild(item);
+        });
     });
 }
 
+// Populate Member filter dropdown
+function populateMemberFilter(memberList) {
+    const select = document.getElementById('expense-member-filter');
+    const currentVal = select.value;
+    select.innerHTML = '<option value="all">All Members</option>';
+    memberList.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.user_id;
+        opt.innerText = m.name;
+        select.appendChild(opt);
+    });
+    select.value = currentVal || 'all';
+}
 
-// UI Rendering - Family Members
-function renderFamilyMembers() {
-    const list = document.getElementById('family-members-list');
-    list.innerHTML = '';
+// UI Rendering - Family Members Summary
+function renderFamilyMembers(memberList) {
+    const container = document.getElementById('family-members-list');
+    container.innerHTML = '';
 
-    if (members.length === 0) {
-        list.innerHTML = '<div class="empty-state">No other family members.</div>';
+    if (!memberList || memberList.length === 0) {
+        container.innerHTML = '<div class="empty-state">No family members found.</div>';
         return;
     }
 
-    members.forEach(member => {
-        const item = document.createElement('div');
-        item.className = 'member-row';
+    memberList.forEach(member => {
+        const card = document.createElement('div');
+        card.className = 'member-row';
+        card.style.flexDirection = 'column';
+        card.style.alignItems = 'stretch';
+        card.style.gap = '8px';
         
-        item.innerHTML = `
-            <div class="member-details">
-                <h4 style="font-weight: 600;">${member.name || member.email}</h4>
-                <p style="color: var(--text-secondary); font-size: 0.85rem;">${member.email}</p>
+        card.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h4>${member.name}</h4>
+                <span class="badge" style="background: rgba(99,102,241,0.15); color: #818CF8;">${member.transaction_count} txns</span>
             </div>
-            <span class="member-badge ${member.role}">${member.role}</span>
+            <div style="display: flex; justify-content: space-between; font-size: 0.82rem; color: var(--text-secondary);">
+                <span>Spent: <strong class="debit-val" style="color: var(--debit-color);">${formatINR(member.total_debit)}</strong></span>
+                <span>Received: <strong class="credit-val" style="color: var(--credit-color);">${formatINR(member.total_credit)}</strong></span>
+            </div>
         `;
-        list.appendChild(item);
+        container.appendChild(card);
     });
 }
 
-// Chart.js Updates
-function updateChart(stats) {
-    const ctx = document.getElementById('analytics-chart').getContext('2d');
-    
-    if (chart) {
-        chart.destroy();
-    }
-
-    chart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: ['Credits (Income)', 'Debits (Expenses)'],
-            datasets: [{
-                data: [stats.total_credit, stats.total_debit],
-                backgroundColor: ['#10B981', '#EF4444'],
-                borderWidth: 1,
-                borderColor: '#1e293b'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: {
-                        color: '#F3F4F6',
-                        font: {
-                            family: 'Outfit',
-                            size: 13
-                        }
-                    }
-                }
-            },
-            cutout: '70%'
-        }
-    });
-}
-
-// Modals controller
+// Add/Edit Modal controller
 function openExpenseModal(id = null) {
     const modal = document.getElementById('expense-modal');
     const form = document.getElementById('expense-form');
@@ -507,6 +852,7 @@ function openExpenseModal(id = null) {
         if (exp) {
             document.getElementById('expense-id').value = exp.id;
             document.getElementById('expense-amount').value = exp.amount;
+            document.getElementById('expense-category').value = exp.category;
             document.getElementById('expense-description').value = exp.description;
             document.getElementById('expense-date').value = exp.date;
             
@@ -529,18 +875,21 @@ function openViewModal(id) {
     const exp = expenses.find(e => e.id === id);
     if (!exp) return;
 
-    const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
-    const dateStr = new Date(exp.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const dateStr = new Date(exp.date).toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' });
 
-    document.getElementById('view-expense-amount').innerText = formatter.format(exp.amount);
+    document.getElementById('view-expense-amount').innerText = formatINR(exp.amount);
     
     const typeEl = document.getElementById('view-expense-type');
     typeEl.innerText = exp.type === 'credit' ? 'Credit (Income)' : 'Debit (Expense)';
     typeEl.style.color = exp.type === 'credit' ? 'var(--credit-color)' : 'var(--debit-color)';
 
+    document.getElementById('view-expense-category').innerText = exp.category_display || exp.category;
     document.getElementById('view-expense-description').innerText = exp.description;
     document.getElementById('view-expense-date').innerText = dateStr;
     document.getElementById('view-expense-user').innerText = exp.user_name || 'Member';
+
+    document.getElementById('btn-edit-expense-action').setAttribute('data-id', exp.id);
+    document.getElementById('btn-delete-expense-action').setAttribute('data-id', exp.id);
 
     document.getElementById('view-expense-modal').classList.add('active');
 }
@@ -549,16 +898,51 @@ function closeViewModal() {
     document.getElementById('view-expense-modal').classList.remove('active');
 }
 
-// CRUD Operations - Expenses
+// Delete confirmation modal flow (Non-accidental deletion)
+function confirmDeleteExpense(id) {
+    const exp = expenses.find(e => e.id === id);
+    if (!exp) return;
+
+    activePendingDeleteId = id;
+    document.getElementById('delete-summary-text').innerText = `${formatINR(exp.amount)} — ${exp.category_display || exp.category}`;
+    document.getElementById('delete-confirm-modal').classList.add('active');
+}
+
+function closeDeleteModal() {
+    activePendingDeleteId = null;
+    document.getElementById('delete-confirm-modal').classList.remove('active');
+}
+
+async function executeDeleteExpense() {
+    if (!activePendingDeleteId) return;
+    try {
+        await apiRequest(`/expenses/${activePendingDeleteId}/`, {
+            method: 'DELETE'
+        });
+        showToast('Transaction deleted!');
+        closeDeleteModal();
+        loadDashboardData();
+    } catch (error) {
+        showToast(error.message, true);
+    }
+}
+
+// CRUD Operations - Expenses Save
 async function handleSaveExpense(e) {
     e.preventDefault();
     const id = document.getElementById('expense-id').value;
     const amount = document.getElementById('expense-amount').value;
     const type = document.querySelector('input[name="expense-type"]:checked').value;
+    const category = document.getElementById('expense-category').value;
     const description = document.getElementById('expense-description').value;
     const date = document.getElementById('expense-date').value;
 
-    const payload = { amount, type, description, date };
+    if (!category) {
+        showToast("Please select a category.", true);
+        return;
+    }
+
+    const payload = { amount, type, category, description, date };
     const method = id ? 'PUT' : 'POST';
     const endpoint = id ? `/expenses/${id}/` : '/expenses/';
 
@@ -569,20 +953,6 @@ async function handleSaveExpense(e) {
         });
         showToast('Transaction saved successfully!');
         closeExpenseModal();
-        loadDashboardData();
-    } catch (error) {
-        showToast(error.message, true);
-    }
-}
-
-async function deleteExpense(id) {
-    if (!confirm('Are you sure you want to delete this record?')) return;
-    
-    try {
-        await apiRequest(`/expenses/${id}/`, {
-            method: 'DELETE'
-        });
-        showToast('Transaction deleted!');
         loadDashboardData();
     } catch (error) {
         showToast(error.message, true);
@@ -623,7 +993,7 @@ function showToast(message, isError = false) {
     }, 3000);
 }
 
-// Export functions to global window object for onclick events
+// Export functions to global window object for inline handlers
 window.openExpenseModal = openExpenseModal;
-window.deleteExpense = deleteExpense;
 window.openViewModal = openViewModal;
+window.confirmDeleteExpense = confirmDeleteExpense;
